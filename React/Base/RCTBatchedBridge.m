@@ -18,7 +18,7 @@
 #import "RCTLog.h"
 #import "RCTModuleData.h"
 #import "RCTModuleMap.h"
-#import "RCTModuleMethod.h"
+#import "RCTBridgeMethod.h"
 #import "RCTPerformanceLogger.h"
 #import "RCTPerfStats.h"
 #import "RCTProfile.h"
@@ -125,7 +125,7 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
         [weakSelf stopLoadingWithError:error];
       });
     }
-    
+
     sourceCode = source;
     dispatch_group_leave(initModulesAndLoadSource);
   }];
@@ -148,7 +148,9 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
 
     dispatch_group_async(setupJSExecutorAndModuleConfig, bridgeQueue, ^{
       if (weakSelf.isValid) {
+        RCTPerformanceLoggerStart(RCTPLNativeModulePrepareConfig);
         config = [weakSelf moduleConfig];
+        RCTPerformanceLoggerEnd(RCTPLNativeModulePrepareConfig);
       }
     });
 
@@ -156,8 +158,9 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
       // We're not waiting for this complete to leave the dispatch group, since
       // injectJSONConfiguration and executeSourceCode will schedule operations on the
       // same queue anyway.
+      RCTPerformanceLoggerStart(RCTPLNativeModuleInjectConfig);
       [weakSelf injectJSONConfiguration:config onComplete:^(NSError *error) {
-        RCTPerformanceLoggerEnd(RCTPLNativeModuleInit);
+        RCTPerformanceLoggerEnd(RCTPLNativeModuleInjectConfig);
         if (error) {
           dispatch_async(dispatch_get_main_queue(), ^{
             [weakSelf stopLoadingWithError:error];
@@ -186,6 +189,23 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
   RCTSourceLoadBlock onSourceLoad = ^(NSError *error, NSString *source) {
     RCTProfileEndAsyncEvent(0, @"init,download", cookie, @"JavaScript download", nil);
     RCTPerformanceLoggerEnd(RCTPLScriptDownload);
+
+    // Only override the value of __DEV__ if running in debug mode, and if we
+    // haven't explicitly overridden the packager dev setting in the bundleURL
+    BOOL shouldOverrideDev = RCT_DEBUG && ([self.bundleURL isFileURL] ||
+    [self.bundleURL.absoluteString rangeOfString:@"dev="].location == NSNotFound);
+
+    // Force JS __DEV__ value to match RCT_DEBUG
+    if (shouldOverrideDev) {
+      NSRange range = [source rangeOfString:@"__DEV__="];
+      RCTAssert(range.location != NSNotFound, @"It looks like the implementation"
+                "of __DEV__ has changed. Update -[RCTBatchedBridge loadSource:].");
+      NSRange valueRange = {range.location + range.length, 2};
+      if ([[source substringWithRange:valueRange] isEqualToString:@"!1"]) {
+        source = [source stringByReplacingCharactersInRange:valueRange withString:@" 1"];
+      }
+    }
+
     _onSourceLoad(error, source);
   };
 
@@ -278,6 +298,7 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
 
   [[NSNotificationCenter defaultCenter] postNotificationName:RCTDidCreateNativeModules
                                                       object:self];
+  RCTPerformanceLoggerEnd(RCTPLNativeModuleInit);
 }
 
 - (void)setupExecutor
@@ -292,12 +313,38 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
     config[moduleData.name] = moduleData.config;
     if ([moduleData.instance conformsToProtocol:@protocol(RCTFrameUpdateObserver)]) {
       [_frameUpdateObservers addObject:moduleData];
+
+      id<RCTFrameUpdateObserver> observer = (id<RCTFrameUpdateObserver>)moduleData.instance;
+      __weak typeof(self) weakSelf = self;
+      __weak typeof(_javaScriptExecutor) weakJavaScriptExecutor = _javaScriptExecutor;
+      observer.pauseCallback = ^{
+        [weakJavaScriptExecutor executeBlockOnJavaScriptQueue:^{
+          [weakSelf updateJSDisplayLinkState];
+        }];
+      };
     }
   }
 
   return RCTJSONStringify(@{
     @"remoteModuleConfig": config,
   }, NULL);
+}
+
+- (void)updateJSDisplayLinkState
+{
+  RCTAssertJSThread();
+
+  BOOL pauseDisplayLink = ![_scheduledCallbacks count] && ![_scheduledCalls count];
+  if (pauseDisplayLink) {
+    for (RCTModuleData *moduleData in _frameUpdateObservers) {
+      id<RCTFrameUpdateObserver> observer = (id<RCTFrameUpdateObserver>)moduleData.instance;
+      if (!observer.paused) {
+        pauseDisplayLink = NO;
+        break;
+      }
+    }
+  }
+  _jsDisplayLink.paused = pauseDisplayLink;
 }
 
 - (void)injectJSONConfiguration:(NSString *)configJSON
@@ -323,6 +370,10 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
   sourceCodeModule.scriptText = sourceCode;
 
   [self enqueueApplicationScript:sourceCode url:self.bundleURL onComplete:^(NSError *loadError) {
+    if (!self.isValid) {
+      return;
+    }
+
     if (loadError) {
       dispatch_async(dispatch_get_main_queue(), ^{
         [self stopLoadingWithError:loadError];
@@ -348,20 +399,20 @@ RCT_EXTERN NSArray *RCTGetModuleClasses(void);
 - (void)stopLoadingWithError:(NSError *)error
 {
   RCTAssertMainThread();
-  
+
   if (!self.isValid || !self.loading) {
     return;
   }
-  
+
   _loading = NO;
-  
+
   NSArray *stack = error.userInfo[@"stack"];
   if (stack) {
     [self.redBox showErrorMessage:error.localizedDescription withStack:stack];
   } else {
     [self.redBox showError:error];
   }
-  
+
   NSDictionary *userInfo = @{@"bridge": self, @"error": error};
   [[NSNotificationCenter defaultCenter] postNotificationName:RCTJavaScriptDidFailToLoadNotification
                                                       object:_parentBridge
@@ -599,6 +650,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
     } else {
       [strongSelf->_scheduledCalls addObject:call];
     }
+    [strongSelf updateJSDisplayLinkState];
 
     RCTProfileEndEvent(0, @"objc_call", call);
   }];
@@ -750,7 +802,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
     return NO;
   }
 
-  RCTModuleMethod *method = moduleData.methods[methodID];
+  id<RCTBridgeMethod> method = moduleData.methods[methodID];
   if (RCT_DEBUG && !method) {
     RCTLogError(@"Unknown methodID: %zd for module: %zd (%@)", methodID, moduleID, moduleData.name);
     return NO;
@@ -766,12 +818,11 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
     }
   }
 
-  RCTProfileEndEvent(0, @"objc_call", @{
-    @"module": NSStringFromClass(method.moduleClass),
-    @"method": method.JSMethodName,
-    @"selector": NSStringFromSelector(method.selector),
-    @"args": RCTJSONStringify(RCTNullIfNil(params), NULL),
-  });
+  NSMutableDictionary *args = [method.profileArgs mutableCopy];
+  [args setValue:method.JSMethodName forKey:@"method"];
+  [args setValue:RCTJSONStringify(RCTNullIfNil(params), NULL) forKey:@"args"];
+
+  RCTProfileEndEvent(0, @"objc_call", args);
 
   return YES;
 }
@@ -784,7 +835,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
   RCTFrameUpdate *frameUpdate = [[RCTFrameUpdate alloc] initWithDisplayLink:displayLink];
   for (RCTModuleData *moduleData in _frameUpdateObservers) {
     id<RCTFrameUpdateObserver> observer = (id<RCTFrameUpdateObserver>)moduleData.instance;
-    if (![observer respondsToSelector:@selector(isPaused)] || !observer.paused) {
+    if (!observer.paused) {
       RCT_IF_DEV(NSString *name = [NSString stringWithFormat:@"[%@ didUpdateFrame:%f]", observer, displayLink.timestamp];)
       RCTProfileBeginFlowEvent();
 
@@ -813,6 +864,7 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
     [self _actuallyInvokeAndProcessModule:@"BatchedBridge"
                                    method:@"processBatch"
                                 arguments:@[[calls valueForKey:@"js_args"]]];
+    [self updateJSDisplayLinkState];
   }
 
   RCTProfileEndEvent(0, @"objc_call", nil);
@@ -853,30 +905,8 @@ RCT_NOT_IMPLEMENTED(- (instancetype)initWithBundleURL:(__unused NSURL *)bundleUR
 
   [_javaScriptExecutor executeBlockOnJavaScriptQueue:^{
     NSString *log = RCTProfileEnd(self);
-    NSString *URLString = [NSString stringWithFormat:@"%@://%@:%@/profile", self.bundleURL.scheme, self.bundleURL.host, self.bundleURL.port];
-    NSURL *URL = [NSURL URLWithString:URLString];
-    NSMutableURLRequest *URLRequest = [NSMutableURLRequest requestWithURL:URL];
-    URLRequest.HTTPMethod = @"POST";
-    [URLRequest setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    NSURLSessionTask *task =
-    [[NSURLSession sharedSession] uploadTaskWithRequest:URLRequest
-                                               fromData:[log dataUsingEncoding:NSUTF8StringEncoding]
-                                      completionHandler:
-     ^(__unused NSData *data, __unused NSURLResponse *response, NSError *error) {
-       if (error) {
-         RCTLogError(@"%@", error.localizedDescription);
-       } else {
-         dispatch_async(dispatch_get_main_queue(), ^{
-           [[[UIAlertView alloc] initWithTitle:@"Profile"
-                                       message:@"The profile has been generated, check the dev server log for instructions."
-                                      delegate:nil
-                             cancelButtonTitle:@"OK"
-                             otherButtonTitles:nil] show];
-         });
-       }
-     }];
-
-    [task resume];
+    NSData *logData = [log dataUsingEncoding:NSUTF8StringEncoding];
+    RCTProfileSendResult(self, @"systrace", logData);
   }];
 }
 

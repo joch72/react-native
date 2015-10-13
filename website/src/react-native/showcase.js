@@ -13,10 +13,22 @@ var center = require('center');
 
 var apps = [
   {
+    name: 'AIGA Design Conference 2015: New Orleans',
+    icon: 'http://a5.mzstatic.com/us/r30/Purple69/v4/b0/4b/29/b04b2939-88d2-f61f-dec9-24fae083d8b3/icon175x175.png',
+    link: 'https://itunes.apple.com/us/app/aiga-design-conference-2015/id1038145272?ls=1&mt=8',
+    author: 'W&Co',
+  },
+  {
     name: 'Beetroot',
     icon: 'http://is1.mzstatic.com/image/pf/us/r30/Purple5/v4/66/fd/dd/66fddd70-f848-4fc5-43ee-4d52197ccab8/pr_source.png',
     link: 'https://itunes.apple.com/us/app/beetroot/id1016159001?ls=1&mt=8',
     author: 'Alex Duckmanton',
+  },
+  {
+    name: 'Company name search',
+    icon: 'http://a4.mzstatic.com/us/r30/Purple69/v4/fd/47/53/fd47537c-5861-e208-d1d1-1e26b5e45a36/icon350x350.jpeg',
+    link: 'https://itunes.apple.com/us/app/company-name-search/id1043824076',
+    author: 'The Formations Factory Ltd',
   },
   {
     name: 'Discord',
@@ -40,7 +52,7 @@ var apps = [
     name: 'Exponent',
     icon: 'http://a4.mzstatic.com/us/r30/Purple2/v4/3a/d3/c9/3ad3c96c-5e14-f988-4bdd-0fdc95efd140/icon175x175.png',
     link:  'https://itunes.apple.com/ca/app/exponent/id982107779?mt=8',
-    author: 'Charlie Cheever & James Ide',
+    author: 'Exponent',
   },
   {
     name: 'F8',
@@ -65,6 +77,18 @@ var apps = [
     icon: 'http://is5.mzstatic.com/image/pf/us/r30/Purple5/v4/9e/16/86/9e1686ef-cc55-805a-c977-538ddb5e6832/mzl.gqbhwitj.png',
     link: 'https://itunes.apple.com/us/app/facebook-ads-manager/id964397083?mt=8',
     author: 'Facebook',
+  },
+  {
+    name: 'FastPaper',
+    icon: 'http://a2.mzstatic.com/us/r30/Purple5/v4/72/b4/d8/72b4d866-90d2-3aad-d1dc-0315f2d9d045/icon350x350.jpeg',
+    link: 'https://itunes.apple.com/us/app/fast-paper/id1001174614',
+    author: 'Liubomyr Mykhalchenko (@liubko)',
+  },
+  {
+    name: 'Hashley',
+    icon: 'http://a2.mzstatic.com/us/r30/Purple4/v4/5f/19/fc/5f19fc13-e7af-cd6b-6749-cedabdaeee7d/icon350x350.png',
+    link: 'https://itunes.apple.com/us/app/hashtag-by-hashley-ironic/id1022724462?mt=8',
+    author: 'Elephant, LLC',
   },
   {
     name: 'HSK Level 1 Chinese Flashcards',
@@ -115,6 +139,12 @@ var apps = [
     author: 'Tian Yuan',
   },
   {
+    name: 'Posyt - Tinder for ideas',
+    icon: 'http://a3.mzstatic.com/us/r30/Purple6/v4/a5/b3/86/a5b38618-a5e9-6089-7425-7fa51ecd5d30/icon175x175.jpeg',
+    link: 'https://itunes.apple.com/us/app/posyt-anonymously-meet-right/id1037842845?mt=8',
+    author: 'Posyt.com',
+  },
+  {
     name: 'ReactTo36',
     icon: 'http://is2.mzstatic.com/image/pf/us/r30/Purple5/v4/e3/c8/79/e3c87934-70c6-4974-f20d-4adcfc68d71d/mzl.wevtbbkq.png',
     link: 'https://itunes.apple.com/us/app/reactto36/id989009293?mt=8',
@@ -157,6 +187,12 @@ var apps = [
     author: 'Ho Yin Tsun Eugene',
   },
   {
+    name: 'WPV',
+    icon: 'http://a1.mzstatic.com/us/r30/Purple3/v4/f1/ae/51/f1ae516b-d8e9-1b6d-acfe-755623a88327/icon350x350.png',
+    link: 'https://itunes.apple.com/us/app/wpv/id725222647?mt=8',
+    author: 'Yamill Vallecillo (@yamill3)',
+  },
+  {
     name: 'Yoloci',
     icon: 'http://a5.mzstatic.com/eu/r30/Purple7/v4/fa/e5/26/fae52635-b97c-bd53-2ade-89e2a4326745/icon175x175.jpeg',
     link: 'https://itunes.apple.com/de/app/yoloci/id991323225?mt=8',
@@ -167,6 +203,12 @@ var apps = [
     icon: 'http://is1.mzstatic.com/image/pf/us/r30/Purple7/v4/7c/42/30/7c423042-8945-7733-8af3-1523468706a8/mzl.qlecxphf.png',
     link: 'https://itunes.apple.com/us/app/youmeyou/id949540333?mt=8',
     author: 'youmeyou, LLC',
+  },
+  {
+    name: 'Ziliun',
+    icon: 'https://lh3.googleusercontent.com/c6ot13BVlU-xONcQi-llFmKXZCLRGbfrCv1RnctWtOELtPYMc0A52srXAfkU897QIg=w300',
+    link: 'https://play.google.com/store/apps/details?id=com.ziliunapp',
+    author: 'Sonny Lazuardi',
   },
 ];
 

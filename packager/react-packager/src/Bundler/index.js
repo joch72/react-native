@@ -137,7 +137,7 @@ class Bundler {
     const findEventId = Activity.startEvent('find dependencies');
     let transformEventId;
 
-    return this.getDependencies(main, isDev, platform).then((result) => {
+    return this.getDependencies(main, isDev, platform).then((response) => {
       Activity.endEvent(findEventId);
       transformEventId = Activity.startEvent('transform');
 
@@ -147,14 +147,19 @@ class Bundler {
           complete: '=',
           incomplete: ' ',
           width: 40,
-          total: result.dependencies.length,
+          total: response.dependencies.length,
         });
       }
 
-      bundle.setMainModuleId(result.mainModuleId);
+      bundle.setMainModuleId(response.mainModuleId);
       return Promise.all(
-        result.dependencies.map(
-          module => this._transformModule(bundle, module, platform).then(transformed => {
+        response.dependencies.map(
+          module => this._transformModule(
+            bundle,
+            response,
+            module,
+            platform
+          ).then(transformed => {
             if (bar) {
               bar.tick();
             }
@@ -182,7 +187,39 @@ class Bundler {
     return this._resolver.getDependencies(main, { dev: isDev, platform });
   }
 
-  _transformModule(bundle, module, platform = null) {
+  getOrderedDependencyPaths({ entryFile, dev, platform }) {
+    return this.getDependencies(entryFile, dev, platform).then(
+      ({ dependencies }) => {
+        const ret = [];
+        const promises = [];
+        const placeHolder = {};
+        dependencies.forEach(dep => {
+          if (dep.isAsset()) {
+            const relPath = getPathRelativeToRoot(
+              this._projectRoots,
+              dep.path
+            );
+            promises.push(
+              this._assetServer.getAssetData(relPath, platform)
+            );
+            ret.push(placeHolder);
+          } else {
+            ret.push(dep.path);
+          }
+        });
+
+        return Promise.all(promises).then(assetsData => {
+          assetsData.forEach(({ files }) => {
+            const index = ret.indexOf(placeHolder);
+            ret.splice(index, 1, ...files);
+          });
+          return ret;
+        });
+      }
+    );
+  }
+
+  _transformModule(bundle, response, module, platform = null) {
     let transform;
 
     if (module.isAsset_DEPRECATED()) {
@@ -199,7 +236,11 @@ class Bundler {
 
     const resolver = this._resolver;
     return transform.then(
-      transformed => resolver.wrapModule(module, transformed.code).then(
+      transformed => resolver.wrapModule(
+        response,
+        module,
+        transformed.code
+      ).then(
         code => new ModuleTransport({
           code: code,
           map: transformed.map,
@@ -259,6 +300,7 @@ class Bundler {
         width: dimensions.width / module.resolution,
         height: dimensions.height / module.resolution,
         scales: assetData.scales,
+        files: assetData.files,
         hash: assetData.hash,
         name: assetData.name,
         type: assetData.type,

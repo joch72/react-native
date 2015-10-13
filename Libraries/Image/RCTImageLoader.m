@@ -14,6 +14,7 @@
 #import "RCTConvert.h"
 #import "RCTDefines.h"
 #import "RCTImageDownloader.h"
+#import "RCTImageUtils.h"
 #import "RCTLog.h"
 #import "RCTUtils.h"
 
@@ -95,6 +96,10 @@ RCT_EXPORT_MODULE()
                                       progressBlock:(RCTImageLoaderProgressBlock)progressBlock
                                     completionBlock:(RCTImageLoaderCompletionBlock)completionBlock
 {
+  if ([imageTag isEqualToString:@""]) {
+    RCTLogWarn(@"source.uri should not be an empty string <Native>");
+    return nil;
+  }
   NSURL *requestURL = [RCTConvert NSURL:imageTag];
   id<RCTImageURLLoader> loadHandler = [self imageURLLoaderForRequest:requestURL];
   if (!loadHandler) {
@@ -161,7 +166,7 @@ RCT_EXPORT_MODULE()
     }];
   } else {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-      UIImage *image = [UIImage imageWithData:data];
+      UIImage *image = [UIImage imageWithData:data scale:scale];
       if (image) {
         RCTDispatchCallbackOnMainQueue(completionBlock, nil, image);
       } else {

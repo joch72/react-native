@@ -9,37 +9,22 @@
 'use strict';
 
 jest
-  .dontMock('absolute-path')
-  .dontMock('crypto')
-  .dontMock('underscore')
-  .dontMock('path')
-  .dontMock('../index')
-  .dontMock('../../lib/getAssetDataFromName')
-  .dontMock('../../DependencyResolver/crawlers')
-  .dontMock('../../DependencyResolver/crawlers/node')
-  .dontMock('../../DependencyResolver/DependencyGraph/docblock')
-  .dontMock('../../DependencyResolver/fastfs')
-  .dontMock('../../DependencyResolver/replacePatterns')
-  .dontMock('../../DependencyResolver')
-  .dontMock('../../DependencyResolver/DependencyGraph')
-  .dontMock('../../DependencyResolver/AssetModule_DEPRECATED')
-  .dontMock('../../DependencyResolver/AssetModule')
-  .dontMock('../../DependencyResolver/Module')
-  .dontMock('../../DependencyResolver/Package')
-  .dontMock('../../DependencyResolver/Polyfill')
-  .dontMock('../../DependencyResolver/ModuleCache');
+  .autoMockOff()
+  .mock('../../Cache')
+  .mock('../../Activity');
 
 const Promise = require('promise');
 const path = require('path');
 
 jest.mock('fs');
 
+var BundlesLayout = require('../index');
+var Cache = require('../../Cache');
+var DependencyResolver = require('../../DependencyResolver');
+var fs = require('fs');
+
 describe('BundlesLayout', () => {
-  var BundlesLayout;
-  var Cache;
-  var DependencyResolver;
   var fileWatcher;
-  var fs;
 
   const polyfills = [
     'polyfills/prelude_dev.js',
@@ -54,11 +39,6 @@ describe('BundlesLayout', () => {
   const baseFs = getBaseFs();
 
   beforeEach(() => {
-    fs = require('fs');
-    BundlesLayout = require('../index');
-    Cache = require('../../Cache');
-    DependencyResolver = require('../../DependencyResolver');
-
     fileWatcher = {
       on: () => this,
       isWatchman: () => Promise.resolve(false)

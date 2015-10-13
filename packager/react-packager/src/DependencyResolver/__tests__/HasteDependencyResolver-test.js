@@ -15,24 +15,38 @@ jest.dontMock('../')
 jest.mock('path');
 
 var Promise = require('promise');
+var HasteDependencyResolver = require('../');
+var Module = require('../Module');
+var Polyfill = require('../Polyfill');
+
+var path = require('path');
 var _ = require('underscore');
 
 describe('HasteDependencyResolver', function() {
-  var HasteDependencyResolver;
-  var Module;
-  var Polyfill;
-
   beforeEach(function() {
-    Module = require('../Module');
-    Polyfill = require('../Polyfill');
     Polyfill.mockClear();
 
     // For the polyfillDeps
-    require('path').join.mockImpl(function(a, b) {
+    path.join.mockImpl(function(a, b) {
       return b;
     });
-    HasteDependencyResolver = require('../');
   });
+
+  class ResolutionResponseMock {
+    constructor({dependencies, mainModuleId, asyncDependencies}) {
+      this.dependencies = dependencies;
+      this.mainModuleId = mainModuleId;
+      this.asyncDependencies = asyncDependencies;
+    }
+
+    prependDependency(dependency) {
+      this.dependencies.unshift(dependency);
+    }
+
+    finalize() {
+      return Promise.resolve(this);
+    }
+  }
 
   function createModule(id, dependencies) {
     var module = new Module();
@@ -52,11 +66,12 @@ describe('HasteDependencyResolver', function() {
 
       // Is there a better way? How can I mock the prototype instead?
       var depGraph = depResolver._depGraph;
-      depGraph.getOrderedDependencies.mockImpl(function() {
-        return Promise.resolve(deps);
-      });
-      depGraph.load.mockImpl(function() {
-        return Promise.resolve();
+      depGraph.getDependencies.mockImpl(function() {
+        return Promise.resolve(new ResolutionResponseMock({
+          dependencies: deps,
+          mainModuleId: 'index',
+          asyncDependencies: [],
+        }));
       });
 
       return depResolver.getDependencies('/root/index.js', { dev: false })
@@ -133,19 +148,19 @@ describe('HasteDependencyResolver', function() {
         projectRoot: '/root',
       });
 
-      // Is there a better way? How can I mock the prototype instead?
       var depGraph = depResolver._depGraph;
-      depGraph.getOrderedDependencies.mockImpl(function() {
-        return Promise.resolve(deps);
-      });
-      depGraph.load.mockImpl(function() {
-        return Promise.resolve();
+      depGraph.getDependencies.mockImpl(function() {
+        return Promise.resolve(new ResolutionResponseMock({
+          dependencies: deps,
+          mainModuleId: 'index',
+          asyncDependencies: [],
+        }));
       });
 
       return depResolver.getDependencies('/root/index.js', { dev: true })
         .then(function(result) {
           expect(result.mainModuleId).toEqual('index');
-          expect(depGraph.getOrderedDependencies).toBeCalledWith('/root/index.js');
+          expect(depGraph.getDependencies).toBeCalledWith('/root/index.js', undefined);
           expect(result.dependencies[0]).toBe(Polyfill.mock.instances[0]);
           expect(result.dependencies[result.dependencies.length - 1])
               .toBe(module);
@@ -161,13 +176,13 @@ describe('HasteDependencyResolver', function() {
         polyfillModuleNames: ['some module'],
       });
 
-      // Is there a better way? How can I mock the prototype instead?
       var depGraph = depResolver._depGraph;
-      depGraph.getOrderedDependencies.mockImpl(function() {
-        return Promise.resolve(deps);
-      });
-      depGraph.load.mockImpl(function() {
-        return Promise.resolve();
+      depGraph.getDependencies.mockImpl(function() {
+        return Promise.resolve(new ResolutionResponseMock({
+          dependencies: deps,
+          mainModuleId: 'index',
+          asyncDependencies: [],
+        }));
       });
 
       return depResolver.getDependencies('/root/index.js', { dev: false })
@@ -203,6 +218,7 @@ describe('HasteDependencyResolver', function() {
 
       /*eslint-disable */
       var code = [
+        // single line import
         "import'x';",
         "import 'x';",
         "import 'x' ;",
@@ -335,6 +351,63 @@ describe('HasteDependencyResolver', function() {
         'import Default, { Foo as Bar, Baz as Qux, Norf as Enuf, } from "x";',
         'import Default from "y";',
         'import * as All from \'z\';',
+        // import with support for new lines
+        "import { Foo,\n Bar }\n from 'x';",
+        "import { \nFoo,\nBar,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz\n }\n from 'x';",
+        "import { \nFoo as Bar,\n Baz\n, }\n from 'x';",
+        "import { Foo,\n Bar as Baz\n }\n from 'x';",
+        "import { Foo,\n Bar as Baz,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux,\n }\n from 'x';",
+        "import { Foo,\n Bar,\n Baz }\n from 'x';",
+        "import { Foo,\n Bar,\n Baz,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz,\n Qux\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz,\n Qux,\n }\n from 'x';",
+        "import { Foo,\n Bar as Baz,\n Qux\n }\n from 'x';",
+        "import { Foo,\n Bar as Baz,\n Qux,\n }\n from 'x';",
+        "import { Foo,\n Bar,\n Baz as Qux\n }\n from 'x';",
+        "import { Foo,\n Bar,\n Baz as Qux,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux,\n Norf\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux,\n Norf,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz,\n Qux as Norf\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz,\n Qux as Norf,\n }\n from 'x';",
+        "import { Foo,\n Bar as Baz,\n Qux as Norf\n }\n from 'x';",
+        "import { Foo,\n Bar as Baz,\n Qux as Norf,\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux,\n Norf as Enuf\n }\n from 'x';",
+        "import { Foo as Bar,\n Baz as Qux,\n Norf as Enuf,\n }\n from 'x';",
+        "import Default,\n * as All from 'x';",
+        "import Default,\n { } from 'x';",
+        "import Default,\n { Foo\n }\n from 'x';",
+        "import Default,\n { Foo,\n }\n from 'x';",
+        "import Default,\n { Foo as Bar\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar\n } from\n 'x';",
+        "import Default,\n { Foo,\n Bar,\n } from\n 'x';",
+        "import Default,\n { Foo as Bar,\n Baz\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz,\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar as Baz\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar as Baz,\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux,\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar,\n Baz\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar,\n Baz,\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz,\n Qux\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz,\n Qux,\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar as Baz,\n Qux\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar as Baz,\n Qux,\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar,\n Baz as Qux\n }\n from 'x';",
+        "import Default,\n { Foo,\n Bar,\n Baz as Qux,\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf,\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz,\n Qux as Norf }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz,\n Qux as Norf, }\n from 'x';",
+        "import Default,\n { Foo, Bar as Baz,\n Qux as Norf }\n from 'x';",
+        "import Default,\n { Foo, Bar as Baz,\n Qux as Norf, }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf as NoMore\n }\n from 'x';",
+        "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf as NoMore,\n }\n from 'x';",
+        "import Default\n , { } from 'x';",
+        // require
         'require("x")',
         'require("y")',
         'require( \'z\' )',
@@ -343,23 +416,30 @@ describe('HasteDependencyResolver', function() {
       ].join('\n');
       /*eslint-disable */
 
-      depGraph.resolveDependency.mockImpl(function(fromModule, toModuleName) {
-        if (toModuleName === 'x') {
-          return Promise.resolve(createModule('changed'));
-        } else if (toModuleName === 'y') {
-          return Promise.resolve(createModule('Y'));
-        }
+      const module = createModule('test module', ['x', 'y']);
 
-        return Promise.resolve(null);
+      const resolutionResponse = new ResolutionResponseMock({
+        dependencies: [module],
+        mainModuleId: 'test module',
+        asyncDependencies: [],
       });
 
+      resolutionResponse.getResolvedDependencyPairs = (module) => {
+        return [
+          ['x', createModule('changed')],
+          ['y', createModule('Y')],
+        ];
+      }
+
       return depResolver.wrapModule(
+        resolutionResponse,
         createModule('test module', ['x', 'y']),
         code
       ).then(processedCode => {
         expect(processedCode).toEqual([
           '__d(\'test module\',["changed","Y"],function(global, require,' +
             ' module, exports) {  ' +
+            // single line import
             "import'x';",
           "import 'changed';",
           "import 'changed' ;",
@@ -492,6 +572,63 @@ describe('HasteDependencyResolver', function() {
           'import Default, { Foo as Bar, Baz as Qux, Norf as Enuf, } from "changed";',
           'import Default from "Y";',
           'import * as All from \'z\';',
+          // import with support for new lines
+          "import { Foo,\n Bar }\n from 'changed';",
+          "import { \nFoo,\nBar,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz\n }\n from 'changed';",
+          "import { \nFoo as Bar,\n Baz\n, }\n from 'changed';",
+          "import { Foo,\n Bar as Baz\n }\n from 'changed';",
+          "import { Foo,\n Bar as Baz,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux,\n }\n from 'changed';",
+          "import { Foo,\n Bar,\n Baz }\n from 'changed';",
+          "import { Foo,\n Bar,\n Baz,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz,\n Qux\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz,\n Qux,\n }\n from 'changed';",
+          "import { Foo,\n Bar as Baz,\n Qux\n }\n from 'changed';",
+          "import { Foo,\n Bar as Baz,\n Qux,\n }\n from 'changed';",
+          "import { Foo,\n Bar,\n Baz as Qux\n }\n from 'changed';",
+          "import { Foo,\n Bar,\n Baz as Qux,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux,\n Norf\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux,\n Norf,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz,\n Qux as Norf\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz,\n Qux as Norf,\n }\n from 'changed';",
+          "import { Foo,\n Bar as Baz,\n Qux as Norf\n }\n from 'changed';",
+          "import { Foo,\n Bar as Baz,\n Qux as Norf,\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux,\n Norf as Enuf\n }\n from 'changed';",
+          "import { Foo as Bar,\n Baz as Qux,\n Norf as Enuf,\n }\n from 'changed';",
+          "import Default,\n * as All from 'changed';",
+          "import Default,\n { } from 'changed';",
+          "import Default,\n { Foo\n }\n from 'changed';",
+          "import Default,\n { Foo,\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar\n } from\n 'changed';",
+          "import Default,\n { Foo,\n Bar,\n } from\n 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz,\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar as Baz\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar as Baz,\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux,\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar,\n Baz\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar,\n Baz,\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz,\n Qux\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz,\n Qux,\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar as Baz,\n Qux\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar as Baz,\n Qux,\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar,\n Baz as Qux\n }\n from 'changed';",
+          "import Default,\n { Foo,\n Bar,\n Baz as Qux,\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf,\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz,\n Qux as Norf }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz,\n Qux as Norf, }\n from 'changed';",
+          "import Default,\n { Foo, Bar as Baz,\n Qux as Norf }\n from 'changed';",
+          "import Default,\n { Foo, Bar as Baz,\n Qux as Norf, }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf as NoMore\n }\n from 'changed';",
+          "import Default,\n { Foo as Bar,\n Baz as Qux,\n Norf as NoMore,\n }\n from 'changed';",
+          "import Default\n , { } from 'changed';",
+          // require
           'require("changed")',
           'require("Y")',
           'require( \'z\' )',
